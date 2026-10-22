@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Proxy AI | Voice Assistant</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #101828, #172554, #312e81);
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 650px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 22px;
+            padding: 35px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            width: 85px;
+            height: 85px;
+            margin: 0 auto 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #38bdf8, #6366f1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 38px;
+            box-shadow: 0 0 35px rgba(56, 189, 248, 0.3);
+        }
+
+        h1 {
+            font-size: 30px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #cbd5e1;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            margin: 22px 0;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #facc15;
+        }
+
+        .status-dot.online {
+            background: #4ade80;
+        }
+
+        .status-dot.offline {
+            background: #f87171;
+        }
+
+        .input-section {
+            margin-top: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #e2e8f0;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            min-width: 0;
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #475569;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.8);
+            color: #ffffff;
+            font-size: 15px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #38bdf8;
+        }
+
+        button {
+            border: none;
+            border-radius: 10px;
+            padding: 13px 18px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .send-btn {
+            background: #38bdf8;
+            color: #082f49;
+        }
+
+        .voice-btn {
+            background: #6366f1;
+            color: #ffffff;
+            width: 100%;
+            margin-top: 12px;
+        }
+
+        .voice-btn.listening {
+            background: #dc2626;
+        }
+
+        .response-box {
+            margin-top: 25px;
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            min-height: 100px;
+        }
+
+        .response-box h3 {
+            font-size: 15px;
+            margin-bottom: 12px;
+            color: #7dd3fc;
+        }
+
+        #response {
+            color: #e2e8f0;
+            line-height: 1.7;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        .message {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #cbd5e1;
+            text-align: center;
+            min-height: 18px;
+        }
+
+        .examples {
+            margin-top: 25px;
+        }
+
+        .examples h3 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            color: #cbd5e1;
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip {
+            background: rgba(255, 255, 255, 0.08);
+            color: #e2e8f0;
+            border: 1px solid #475569;
+            padding: 9px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .footer {
+            margin-top: 25px;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 23px 18px;
+            }
+
+            h1 {
+                font-size: 25px;
+            }
+
+            .input-group {
+                flex-direction: column;
+            }
+
+            .send-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <main class="container">
+
+        <header class="header">
+            <div class="logo">🤖</div>
+            <h1>Proxy AI</h1>
+            <p class="subtitle">
+                Your personal AI voice assistant.<br>
+                Enter a command or use your microphone.
+            </p>
+        </header>
+
+        <div class="status">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Checking server connection...</span>
+        </div>
+
+        <section class="input-section">
+            <label for="commandInput">Enter your command</label>
+
+            <form id="commandForm">
+                <div class="input-group">
+                    <input
+                        type="text"
+                        id="commandInput"
+                        placeholder="e.g. What time is it?"
+                        autocomplete="off"
+                        required
+                    >
+
+                    <button type="submit" class="send-btn" id="sendBtn">
+                        Send
+                    </button>
+                </div>
+            </form>
+
+            <button type="button" class="voice-btn" id="voiceBtn">
+                🎤 Speak Command
+            </button>
+
+            <p class="message" id="message"></p>
+        </section>
+
+        <section class="response-box" aria-live="polite">
+            <h3>🤖 Assistant Response</h3>
+            <p id="response">Hello! Enter a command to get started.</p>
+        </section>
+
+        <section class="examples">
+            <h3>Try these commands</h3>
+
+            <div class="chips">
+                <button class="chip" data-command="hello">Hello</button>
+                <button class="chip" data-command="what time is it">
+                    What time is it?
+                </button>
+                <button class="chip" data-command="open YouTube">
+                    Open YouTube
+                </button>
+                <button class="chip" data-command="tell me a joke">
+                    Tell me a joke
+                </button>
+            </div>
+        </section>
+
+        <footer class="footer">
+            Proxy AI · Powered by Python and Flask
+        </footer>
+
+    </main>
+
+    <script>
+        const commandForm = document.getElementById("commandForm");
+        const commandInput = document.getElementById("commandInput");
+        const sendBtn = document.getElementById("sendBtn");
+        const voiceBtn = document.getElementById("voiceBtn");
+        const responseBox = document.getElementById("response");
+        const message = document.getElementById("message");
+        const statusDot = document.getElementById("statusDot");
+        const statusText = document.getElementById("statusText");
+
+        let isListening = false;
+        
+async function sendCommand(command) {
+    command = command.trim();
+
+    if (!command) {
+        message.textContent = "Please enter a command.";
+        return;
+    }
+
+    sendBtn.disabled = true;
+    voiceBtn.disabled = true;
+
+    message.textContent = "Processing your question...";
+    responseBox.textContent = "Thinking...";
+
+    try {
+        const result = await fetch("/api/command", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ command })
+        });
+
+        const data = await result.json();
+
+        if (!result.ok) {
+            throw new Error(data.error || "Request failed.");
+        }
+
+        // Display the AI answer on the webpage
+        responseBox.textContent = data.response || "No answer received.";
+
+        message.textContent = "Answer generated successfully.";
+
+    } catch (error) {
+        responseBox.textContent = "Unable to get an answer.";
+        message.textContent = error.message;
+    } finally {
+        sendBtn.disabled = false;
+        voiceBtn.disabled = false;
+        commandInput.focus();
+    }
+}
+
+
+        // Check Flask server
+        async function checkServer() {
+            try {
+                const result = await fetch("/api/health");
+
+                if (!result.ok) {
+                    throw new Error("Server unavailable");
+                }
+
+                statusDot.className = "status-dot online";
+                statusText.textContent = "Server connected";
+            } catch (error) {
+                statusDot.className = "status-dot offline";
+                statusText.textContent = "Server disconnected";
+            }
+        }
+
+        // Send a text command to Flask
+        async function sendCommand(command) {
+            command = command.trim();
+
+            if (!command) {
+                message.textContent = "Please enter a command.";
+                return;
+            }
+
+            sendBtn.disabled = true;
+            voiceBtn.disabled = true;
+            message.textContent = "Processing your command...";
+            responseBox.textContent = "Please wait...";
+
+            try {
+                const result = await fetch("/api/command", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        command: command
+                    })
+                });
+
+                const data = await result.json();
+
+                if (!result.ok) {
+                    throw new Error(
+                        data.error || "Unable to process command."
+                    );
+                }
+
+                responseBox.textContent = data.response;
+                message.textContent = "Command processed successfully.";
+
+            } catch (error) {
+                responseBox.textContent = "Unable to process your request.";
+                message.textContent = error.message;
+            } finally {
+                sendBtn.disabled = false;
+                voiceBtn.disabled = false;
+                commandInput.focus();
+            }
+        }
+
+        // Submit typed commands
+        commandForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+            sendCommand(commandInput.value);
+        });
+
+        // Example command buttons
+        document.querySelectorAll("[data-command]").forEach(button => {
+            button.addEventListener("click", function () {
+                const command = this.dataset.command;
+                commandInput.value = command;
+                sendCommand(command);
+            });
+        });
+
+        // Browser microphone support
+        const SpeechRecognition =
+            window.SpeechRecognition ||
+            window.webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+
+            recognition.lang = "en-IN";
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            voiceBtn.addEventListener("click", function () {
+                if (isListening) {
+                    recognition.stop();
+                    return;
+                }
+
+                try {
+                    recognition.start();
+                } catch (error) {
+                    message.textContent =
+                        "Microphone is busy. Please try again.";
+                }
+            });
+
+            recognition.onstart = function () {
+                isListening = true;
+                voiceBtn.classList.add("listening");
+                voiceBtn.textContent = "🔴 Listening...";
+                message.textContent = "Speak now...";
+            };
+
+            recognition.onresult = function (event) {
+                const transcript =
+                    event.results[0][0].transcript;
+
+                commandInput.value = transcript;
+                sendCommand(transcript);
+            };
+
+            recognition.onerror = function (event) {
+                message.textContent =
+                    "Microphone error: " + event.error;
+            };
+
+            recognition.onend = function () {
+                isListening = false;
+                voiceBtn.classList.remove("listening");
+                voiceBtn.textContent = "🎤 Speak Command";
+            };
+
+        } else {
+            voiceBtn.disabled = true;
+            voiceBtn.textContent =
+                "Microphone not supported in this browser";
+        }
+
+        // Initial connection check
+        checkServer();
+    </script>
+
+</body>
+</html>
