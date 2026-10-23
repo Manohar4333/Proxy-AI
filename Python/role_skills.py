@@ -8,7 +8,36 @@ ESCO_SEARCH_URL = f"{ESCO_API}/search"
 
 ROLE_ALIASES = {
     "java developer": "software developer",
-    "java software developer": "software developer"
+    "java software developer": "software developer",
+    "python developer": "software developer",
+    "python software developer": "software developer"
+}
+
+LANGUAGE_DEVELOPER_SKILLS = {
+    "python": [
+        "Python",
+        "Object-oriented programming",
+        "Data structures and algorithms",
+        "Exception handling",
+        "Debugging",
+        "Unit testing",
+        "Git",
+        "SQL",
+        "REST APIs",
+        "Python packages and virtual environments"
+    ],
+    "java": [
+        "Java",
+        "Object-oriented programming",
+        "Data types and control flow",
+        "Classes and interfaces",
+        "Collections Framework",
+        "Exception handling",
+        "Generics",
+        "Unit testing",
+        "SQL",
+        "JVM and memory management"
+    ]
 }
 
 SKILL_ALIASES = {
@@ -106,7 +135,22 @@ def compare_skills(role_skills, candidate_skills):
 def _role_search_text(role):
     normalized = re.sub(r"[^a-z0-9+#.]+", " ", role.lower()).strip()
     normalized = re.sub(r"\s+", " ", normalized)
+    if "python" in normalized and "developer" in normalized:
+        return "software developer"
+    if "java" in normalized and "developer" in normalized:
+        return "software developer"
     return ROLE_ALIASES.get(normalized, role.strip())
+
+
+def _language_developer_skills(role):
+    normalized = re.sub(r"[^a-z0-9+#.]+", " ", role.lower()).strip()
+    if "developer" not in normalized:
+        return None
+    if "python" in normalized:
+        return LANGUAGE_DEVELOPER_SKILLS["python"]
+    if "java" in normalized:
+        return LANGUAGE_DEVELOPER_SKILLS["java"]
+    return None
 
 
 def _select_occupation(results, search_text):
@@ -130,10 +174,8 @@ def _select_occupation(results, search_text):
             label_words = set(normalized_label.split())
             if normalized_label == normalized_search:
                 return len(search_words) + 10
-            best_score = max(
-                best_score,
-                len(search_words & label_words)
-            )
+            if search_words.issubset(label_words):
+                best_score = max(best_score, len(search_words))
         return best_score
 
     candidates = [
@@ -145,12 +187,15 @@ def _select_occupation(results, search_text):
             "The online skills catalog did not find an occupation for this role."
         )
 
-    occupation = max(candidates, key=score)
-    if score(occupation) == 0:
+    matching_candidates = [
+        result for result in candidates
+        if score(result) > 0
+    ]
+    if not matching_candidates:
         raise RoleSkillLookupError(
-            "The online skills catalog did not find a close occupation match."
+            "The online skills catalog did not find a sufficiently close occupation match."
         )
-    return occupation
+    return max(matching_candidates, key=score)
 
 
 def get_role_skill_profile(role):
@@ -200,9 +245,20 @@ def get_role_skill_profile(role):
         for skill in skill_links.get("hasOptionalSkill", [])
         if skill.get("title", "").strip()
     ]
-    role_skills = []
+    language_skills = _language_developer_skills(role)
+    if language_skills is None:
+        role_skills = []
+        skill_profile_basis = "ESCO occupation skills"
+    else:
+        role_skills = list(language_skills)
+        skill_profile_basis = "Python/Java developer skill profile"
     seen = set()
+    for skill in role_skills:
+        seen.add(normalize_skill(skill))
+
     for skill in essential_skills + optional_skills:
+        if language_skills is not None:
+            break
         normalized = normalize_skill(skill)
         if normalized and normalized not in seen:
             seen.add(normalized)
@@ -218,6 +274,7 @@ def get_role_skill_profile(role):
     return {
         "occupation": occupation.get("title", role),
         "role_skills": role_skills,
+        "skill_profile_basis": skill_profile_basis,
         "essential_skills": essential_skills,
         "optional_skills": optional_skills,
         "source_url": occupation.get("_links", {}).get(
