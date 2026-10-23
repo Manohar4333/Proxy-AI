@@ -219,6 +219,12 @@ textarea {
     font-size: 1.28rem;
     line-height: 1.6;
     font-weight: 650;
+    cursor: text;
+}
+
+#questionText::selection {
+    background: var(--blue);
+    color: #fff;
 }
 
 .progress-track {
