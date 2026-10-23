@@ -1,388 +1,32 @@
-from flask import Flask, jsonify, request, render_template
 import os
-import random
-import re
+
 import requests
+from flask import Flask, jsonify, render_template, request
+
+from question_generation import generate_mixed_questions
+from question_support import (
+    JAVA_TOPICS,
+    MODEL,
+    TOTAL_QUESTIONS,
+    normalize_question
+)
+from role_skills import (
+    RoleSkillLookupError,
+    compare_skills,
+    get_role_skill_profile
+)
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 app = Flask(
     __name__,
     template_folder=os.path.join(BASE_DIR, "template")
 )
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "qwen2.5:1.5b"
-
-TOTAL_QUESTIONS = 25
-MAX_RETRIES = 5
-QUESTION_CATEGORIES = {
-    "Role and skills": 10,
-    "HR and behavioral": 5,
-    "Project experience": 5,
-    "Casual conversation": 5
-}
-
-DIFFICULTY_LEVELS = {
-    1: "Very Easy",
-    2: "Easy",
-    3: "Medium",
-    4: "Hard",
-    5: "Expert"
-}
-
-JAVA_TOPICS = [
-    "Java fundamentals and syntax",
-    "Data types, variables, and type casting",
-    "Operators and control flow",
-    "Classes, objects, and constructors",
-    "Encapsulation and access modifiers",
-    "Inheritance and method overriding",
-    "Polymorphism and abstraction",
-    "Interfaces and abstract classes",
-    "Method overloading and overriding",
-    "Strings and StringBuilder",
-    "Arrays and multidimensional arrays",
-    "Collections Framework and List",
-    "Set, Map, and HashMap",
-    "Generics and type safety",
-    "Exception handling",
-    "Checked and unchecked exceptions",
-    "Java 8 lambda expressions",
-    "Functional interfaces and streams",
-    "Optional and functional programming",
-    "Multithreading and thread safety",
-    "Synchronization and concurrency",
-    "JVM, JRE, JDK, and bytecode",
-    "Garbage collection and memory management",
-    "Java I/O and file handling",
-    "JDBC and database connectivity",
-    "Enums, records, and nested classes",
-    "equals, hashCode, and toString contracts",
-    "Immutability and defensive copying",
-    "Design patterns and SOLID principles",
-    "Performance, debugging, and optimization"
-]
-
-
-def normalize_question(question):
-    question = question.lower().strip()
-    question = re.sub(
-        r"^(?:question\s*)?\d+\s*[.):\-]\s*",
-        "",
-        question,
-        flags=re.IGNORECASE
-    )
-    question = re.sub(r"[^\w\s]", "", question)
-    return re.sub(r"\s+", " ", question).strip()
-
-
-def parse_questions(text):
-    questions = []
-    seen = set()
-
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-
-        # Remove numbering such as "1.", "1)", "1:", or "Question 1:"
-        line = re.sub(
-            r"^(?:question\s*)?\d+\s*[.):\-]\s*",
-            "",
-            line,
-            flags=re.IGNORECASE
-        )
-        line = line.strip().strip('"').strip("'").strip("*").strip()
-
-        # Keep only actual question lines.
-        if not line or not line.endswith("?"):
-            continue
-
-        normalized = normalize_question(line)
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            questions.append(line)
-
-    return questions
-
-
-def generate_from_ollama(prompt, token_limit):
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "prompt": prompt,
-            "stream": False,
-            "keep_alive": "30m",
-            "options": {
-                "num_predict": token_limit,
-                "temperature": 0.3
-            }
-        },
-        timeout=300
-    )
-    response.raise_for_status()
-    return response.json().get("response", "").strip()
-
-
-def technical_fallback_questions(role, skills, level):
-    skill = skills[0] if skills else role
-    questions_by_level = {
-        1: [
-            f"What does {skill} mean, and what is one basic use for it in a {role} role?",
-            f"What basic problem does {skill} help solve in work as a {role}?",
-            f"Where might a {role} use {skill} in a simple day-to-day task?",
-            f"What is one basic concept a {role} should understand about {skill}?"
-        ],
-        2: [
-            f"How would you use {skill} to complete a typical task in a {role} role?",
-            f"When would you choose {skill} over an alternative for a {role} task, and why?",
-            f"What steps would you take to apply {skill} to a routine {role} assignment?",
-            f"How would you compare two simple ways of using {skill} for a {role} task?"
-        ],
-        3: [
-            f"How would you use {skill} to solve a practical {role} problem with multiple requirements?",
-            f"How would you test a {skill}-based solution before releasing it in a {role} project?",
-            f"How would you break down a multi-step {role} problem and solve it using {skill}?",
-            f"How would you investigate an unexpected result in a {role} task involving {skill}?"
-        ],
-        4: [
-            f"How would you diagnose a difficult production issue related to {skill} while minimizing impact?",
-            f"How would you redesign a {skill}-based system to improve reliability under rising load?",
-            f"How would you evaluate competing fixes for a serious {skill}-related issue in a {role} system?",
-            f"How would you prevent a complex failure involving {skill} from recurring in production?"
-        ],
-        5: [
-            f"How would you assess the architectural trade-offs of using {skill} at scale in a {role} system?",
-            f"What constraints would make you avoid {skill} in a large-scale {role} architecture, and what would you use instead?",
-            f"How would you design a long-term {role} architecture around {skill} while managing scale and reliability?",
-            f"How would you decide whether to replace {skill} in a mature {role} system with stricter performance constraints?"
-        ]
-    }
-    return questions_by_level[level]
-
-
-def generate_technical_questions(role, skills, topic_text):
-    questions = []
-    seen = set()
-    difficulty_guidance = {
-        1: "Test core definitions and basic concepts with direct, introductory questions.",
-        2: "Test straightforward applications, simple examples, and basic comparisons.",
-        3: "Test practical problem-solving, multi-step application, or common debugging.",
-        4: "Test complex real-world scenarios, debugging, design decisions, and trade-offs.",
-        5: "Test advanced architecture, internals, scale, performance, and nuanced trade-offs."
-    }
-    difficulty_plan = [
-        (level, DIFFICULTY_LEVELS[level], difficulty_guidance[level])
-        for level in DIFFICULTY_LEVELS
-        for _ in range(
-            QUESTION_CATEGORIES["Role and skills"] // len(DIFFICULTY_LEVELS)
-        )
-    ]
-
-    for _ in range(MAX_RETRIES + 1):
-        remaining_plan = difficulty_plan[len(questions):]
-        missing = len(remaining_plan)
-        if missing <= 0:
-            return [
-                {
-                    "question": question,
-                    "category": "Role and skills",
-                    "difficulty": {
-                        "level": level,
-                        "name": level_name
-                    }
-                }
-                for question, (level, level_name, _) in zip(
-                    questions,
-                    difficulty_plan
-                )
-            ]
-
-        prompt_plan = "\n".join(
-            f"Question {index}: {level_name} - {guidance}"
-            for index, (_, level_name, guidance) in enumerate(
-                remaining_plan,
-                start=1
-            )
-        )
-
-        prompt = f"""
-You are a technical interviewer assessing a candidate for a specific job.
-
-Job role: {role}
-Candidate skills: {", ".join(skills) if skills else role}
-Relevant topics: {topic_text}
-
-Generate exactly {missing} unique technical interview questions.
-Each question must be directly related to the job role and candidate skills.
-Use this difficulty plan in the exact order shown; do not group or skip levels:
-{prompt_plan}
-
-The questions must become progressively more challenging according to the plan.
-Do not ask HR, project-history, or casual conversation questions.
-Do not include answers, headings, or introductions.
-Output only numbered questions, one per line. Every question must end with a question mark.
-
-Already generated questions; do not repeat or rephrase them:
-{chr(10).join(questions)}
-"""
-        generated_text = generate_from_ollama(
-            prompt,
-            min(1800, max(300, missing * 80))
-        )
-        for question in parse_questions(generated_text):
-            normalized = normalize_question(question)
-            if normalized and normalized not in seen:
-                seen.add(normalized)
-                questions.append(question)
-                if len(questions) == len(difficulty_plan):
-                    break
-
-    if len(questions) != len(difficulty_plan):
-        app.logger.warning(
-            "Question model returned %d unique technical questions; filling the remaining %d with role-specific fallbacks.",
-            len(questions),
-            len(difficulty_plan) - len(questions)
-        )
-        for index in range(len(questions), len(difficulty_plan)):
-            level, level_name, _ = difficulty_plan[index]
-            candidates = technical_fallback_questions(
-                role,
-                skills,
-                level
-            )
-            question = next(
-                (
-                    candidate for candidate in candidates
-                    if normalize_question(candidate) not in seen
-                ),
-                None
-            )
-            if question is None:
-                app.logger.error(
-                    "No unique fallback question available for difficulty level %s.",
-                    level_name
-                )
-                return None
-            normalized = normalize_question(question)
-            seen.add(normalized)
-            questions.append(question)
-
-    return [
-        {
-            "question": question,
-            "category": "Role and skills",
-            "difficulty": {
-                "level": level,
-                "name": level_name
-            }
-        }
-        for question, (level, level_name, _) in zip(questions, difficulty_plan)
-    ]
-
-
-def generate_mixed_questions(role, skills, topic_text):
-    role_questions = generate_technical_questions(role, skills, topic_text)
-    if role_questions is None:
-        return None
-
-    skill = random.choice(skills) if skills else role
-    project_questions = [
-        (
-            1,
-            f"Can you briefly describe a project where you used {skill} and your contribution?"
-        ),
-        (
-            2,
-            f"How did you apply {skill} to meet a specific requirement in a project?"
-        ),
-        (
-            3,
-            f"What challenge did you face using {skill} in a project, and how did you test your solution?"
-        ),
-        (
-            4,
-            f"What alternatives to {skill} did you consider for a project, and how did you weigh the trade-offs?"
-        ),
-        (
-            5,
-            f"If a project using {skill} had to scale significantly, what would you redesign first and why?"
-        )
-    ]
-    hr_questions = [
-        "What motivates you to do your best work?",
-        "Can you describe a time you worked through a disagreement with a teammate?",
-        "How do you respond to constructive feedback?",
-        "How do you prioritize when several important tasks have competing deadlines?",
-        "What strengths would you bring to this team, and how have you demonstrated them?"
-    ]
-    casual_questions = [
-        "What hobby or activity do you enjoy outside of work?",
-        "What is a place you have visited that you would recommend?",
-        "What kind of music, books, or shows have you been enjoying lately?",
-        "What is something fun you would like to try this year?",
-        "What is a small thing that has made you smile recently?"
-    ]
-
-    nontechnical_questions = [
-        {"question": question, "category": "HR and behavioral"}
-        for question in hr_questions
-    ]
-    nontechnical_questions.extend(
-        {
-            "question": question,
-            "category": "Project experience",
-            "difficulty": {
-                "level": level,
-                "name": DIFFICULTY_LEVELS[level]
-            }
-        }
-        for level, question in project_questions
-    )
-    nontechnical_questions.extend(
-        {"question": question, "category": "Casual conversation"}
-        for question in casual_questions
-    )
-    categorized_questions = role_questions.copy()
-    random.shuffle(nontechnical_questions)
-    for question in nontechnical_questions:
-        categorized_questions.insert(
-            random.randrange(len(categorized_questions) + 1),
-            question
-        )
-
-    unique_questions = []
-    seen_questions = set()
-    for item in categorized_questions:
-        normalized = normalize_question(item["question"])
-        if not normalized or normalized in seen_questions:
-            app.logger.warning(
-                "Discarding duplicate or empty question in category %s.",
-                item["category"]
-            )
-            return None
-        seen_questions.add(normalized)
-        unique_questions.append(item)
-
-    if len(unique_questions) != TOTAL_QUESTIONS:
-        app.logger.error(
-            "Question set contains %d unique questions; expected %d.",
-            len(unique_questions),
-            TOTAL_QUESTIONS
-        )
-        return None
-    return unique_questions
-
 
 @app.route("/", methods=["GET"])
-def home():
-    return render_template("interview.html")
-
-
 @app.route("/interview", methods=["GET"])
-def interview():
+def home():
     return render_template("interview.html")
 
 
@@ -396,12 +40,34 @@ def generate_questions():
     data = request.get_json(silent=True) or {}
     role = data.get("role", "")
     skills = data.get("skills", [])
+    experience_level = data.get("experience_level", "fresher")
+    years_experience = data.get("years_experience", 0)
 
     if not isinstance(role, str) or not role.strip():
         return jsonify({"error": "Role is required"}), 400
 
     if not isinstance(skills, list):
         return jsonify({"error": "Skills must be a list"}), 400
+
+    if experience_level not in ("fresher", "experienced"):
+        return jsonify({
+            "error": "Experience level must be fresher or experienced"
+        }), 400
+
+    if (
+        isinstance(years_experience, bool)
+        or not isinstance(years_experience, int)
+        or years_experience < 0
+        or years_experience > 50
+    ):
+        return jsonify({
+            "error": "Years of experience must be a whole number from 0 to 50"
+        }), 400
+
+    if experience_level == "experienced" and years_experience < 1:
+        return jsonify({
+            "error": "Enter at least 1 year for an experienced candidate"
+        }), 400
 
     role = role.strip()
     skills = [
@@ -410,15 +76,33 @@ def generate_questions():
         if isinstance(skill, str) and skill.strip()
     ]
 
-    is_java_role = (
-        "java" in role.lower()
-        or any("java" in skill.lower() for skill in skills)
-    )
-    topics = skills + JAVA_TOPICS if is_java_role else skills
-    topic_text = ", ".join(topics) if topics else role
-
     try:
-        questions = generate_mixed_questions(role, skills, topic_text)
+        role_profile = get_role_skill_profile(role)
+        is_java_role = (
+            "java" in role.lower()
+            or any("java" in skill.lower() for skill in skills)
+        )
+        role_skills = role_profile["role_skills"]
+        if is_java_role:
+            role_skills = list(dict.fromkeys(
+                ["Java", "Object-oriented programming"]
+                + JAVA_TOPICS[:10]
+                + role_skills
+            ))
+
+        skill_comparison = compare_skills(role_skills, skills)
+        topics = role_skills + skills
+        topic_text = ", ".join(topics) if topics else role
+
+        questions = generate_mixed_questions(
+            role,
+            skills,
+            topic_text,
+            experience_level,
+            years_experience,
+            role_skills,
+            skill_comparison["additional"]
+        )
         unique_question_count = len({
             normalize_question(item["question"])
             for item in questions or []
@@ -444,7 +128,8 @@ def generate_questions():
             {
                 "question_number": index,
                 "difficulty": questions[index - 1].get("difficulty"),
-                "category": questions[index - 1]["category"]
+                "category": questions[index - 1]["category"],
+                "focus_skill": questions[index - 1].get("focus_skill")
             }
             for index in range(1, TOTAL_QUESTIONS + 1)
         ]
@@ -452,11 +137,24 @@ def generate_questions():
         return jsonify({
             "role": role,
             "skills": skills,
+            "matched_role_skills": skill_comparison["matched"],
+            "missing_role_skills": skill_comparison["missing"],
+            "additional_skills": skill_comparison["additional"],
+            "role_skill_source": role_profile["source_url"],
+            "matched_occupation": role_profile["occupation"],
+            "experience_level": experience_level,
+            "years_experience": years_experience,
             "questions": [item["question"] for item in questions],
             "question_details": question_details,
             "total_questions": len(questions)
         })
 
+    except RoleSkillLookupError as error:
+        app.logger.exception("Online role skill lookup failed")
+        return jsonify({
+            "error": str(error),
+            "retry": True
+        }), 503
     except requests.RequestException as error:
         app.logger.exception("Ollama request failed")
         return jsonify({
