@@ -31,7 +31,7 @@
             cursor: pointer;
         }
         button:disabled { background: #aab4c5; cursor: not-allowed; }
-        textarea, input {
+        textarea, input, select {
             width: 100%;
             padding: 12px;
             margin: 8px 0;
@@ -66,18 +66,30 @@
 </head>
 <body data-generate-url="{{ url_for('generate_questions') }}">
     <h1>AI Interviewer</h1>
-    <p>Voice-enabled interview questions tailored to your role and skills, mixed with HR, project, and casual questions.</p>
+    <p>Voice-enabled interview questions based on the job role, its online skill profile, and the candidate's experience.</p>
 
     <section>
         <h2>Configure Interview</h2>
         <label for="role">Job role</label>
         <input id="role" value="Java Developer">
 
-        <label for="skills">Skills (comma-separated)</label>
-        <input id="skills" value="Java, SQL, OOP">
+        <label for="experienceLevel">Candidate experience</label>
+        <select id="experienceLevel">
+            <option value="fresher" selected>Fresher / no full-time experience</option>
+            <option value="experienced">Experienced</option>
+        </select>
+
+        <div id="yearsExperienceGroup" hidden>
+            <label for="yearsExperience">Years of experience</label>
+            <input id="yearsExperience" type="number" min="1" max="50" step="1" value="1">
+        </div>
+
+        <label for="skills">Skills listed on the resume (optional, comma-separated)</label>
+        <input id="skills" placeholder="For example: Java, SQL, OOP">
 
         <button id="generateBtn">Generate Questions</button>
         <p id="status" role="status" aria-live="polite">Ready</p>
+        <div id="skillsMatch" aria-live="polite" hidden></div>
     </section>
 
     <section>
@@ -120,6 +132,16 @@
         const startBtn = document.getElementById("startBtn");
         const stopBtn = document.getElementById("stopBtn");
         const generateUrl = document.body.dataset.generateUrl;
+        const experienceLevelInput = document.getElementById("experienceLevel");
+        const yearsExperienceGroup = document.getElementById("yearsExperienceGroup");
+        const yearsExperienceInput = document.getElementById("yearsExperience");
+        const skillsMatch = document.getElementById("skillsMatch");
+
+        experienceLevelInput.onchange = () => {
+            const experienced = experienceLevelInput.value === "experienced";
+            yearsExperienceGroup.hidden = !experienced;
+            yearsExperienceInput.required = experienced;
+        };
 
         let questions = [];
         let questionDetails = [];
@@ -153,7 +175,8 @@
             questionNumberText.textContent = `Question ${number} of ${questions.length}`;
             const detail = questionDetails[currentIndex];
             questionCategoryText.textContent = detail?.difficulty
-                ? `${detail.category} - ${detail.difficulty.name}`
+                ? `${detail.category} - ${detail.difficulty.name}` +
+                    (detail.focus_skill ? ` - Focus: ${detail.focus_skill}` : "")
                 : detail?.category || "";
             progressFill.style.width = `${(number / questions.length) * 100}%`;
 
@@ -194,9 +217,18 @@
             const role = document.getElementById("role").value.trim();
             const skills = document.getElementById("skills").value
                 .split(",").map(skill => skill.trim()).filter(Boolean);
+            const experienceLevel = experienceLevelInput.value;
+            const yearsExperience = experienceLevel === "experienced"
+                ? Number(yearsExperienceInput.value)
+                : 0;
 
             if (!role) {
                 statusText.textContent = "Enter a job role.";
+                return;
+            }
+            if (experienceLevel === "experienced" &&
+                (!Number.isInteger(yearsExperience) || yearsExperience < 1 || yearsExperience > 50)) {
+                statusText.textContent = "Enter whole years of experience from 1 to 50.";
                 return;
             }
 
@@ -205,7 +237,9 @@
             generateBtn.disabled = true;
             nextBtn.disabled = true;
             statusText.textContent =
-                "Generating 25 mixed questions, with technical questions across five difficulty levels. This may take a few minutes...";
+                "Checking the online role skill profile and generating experience-appropriate questions. This may take a few minutes...";
+            skillsMatch.hidden = true;
+            skillsMatch.replaceChildren();
 
             try {
                 const response = await fetch(generateUrl, {
@@ -214,7 +248,12 @@
                         "Content-Type": "application/json",
                         "Accept": "application/json"
                     },
-                    body: JSON.stringify({ role, skills })
+                    body: JSON.stringify({
+                        role,
+                        skills,
+                        experience_level: experienceLevel,
+                        years_experience: yearsExperience
+                    })
                 });
 
                 const responseText = await response.text();
@@ -246,10 +285,33 @@
 
                 questions = data.questions;
                 questionDetails = data.question_details;
+                const profileTitle = document.createElement("p");
+                profileTitle.textContent =
+                    `Online role profile: ${data.matched_occupation || role} (ESCO)`;
+                skillsMatch.appendChild(profileTitle);
+                const sourceLink = document.createElement("a");
+                sourceLink.href = data.role_skill_source;
+                sourceLink.target = "_blank";
+                sourceLink.rel = "noopener noreferrer";
+                sourceLink.textContent = "View ESCO occupation profile";
+                skillsMatch.appendChild(sourceLink);
+                [
+                    ["Matched role skills", data.matched_role_skills],
+                    ["Role skills not listed on the resume (still assessed)", data.missing_role_skills],
+                    ["Additional resume skills (asked after role skills)", data.additional_skills]
+                ].forEach(([label, skillList]) => {
+                    const row = document.createElement("p");
+                    row.textContent = `${label}: ${skillList.length ? skillList.join(", ") : "None"}`;
+                    skillsMatch.appendChild(row);
+                });
+                skillsMatch.hidden = false;
                 currentIndex = 0;
                 displayQuestion();
+                const experienceDescription = experienceLevel === "fresher"
+                    ? "fresher"
+                    : `${yearsExperience} year(s) of experience`;
                 statusText.textContent =
-                    `25 mixed questions for ${data.role || role} are ready. Only one question is shown at a time.`;
+                    `25 mixed questions for ${data.role || role} (${experienceDescription}) are ready. Only one question is shown at a time.`;
             } catch (error) {
                 statusText.textContent = error instanceof TypeError
                     ? "Could not reach the Flask app. Make sure it is running, then reload this page from http://127.0.0.1:5000."
