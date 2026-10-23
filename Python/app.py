@@ -1,11 +1,10 @@
 import os
 
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 from question_generation import generate_mixed_questions
 from question_support import (
-    JAVA_TOPICS,
     MODEL,
     TOTAL_QUESTIONS,
     normalize_question
@@ -20,7 +19,8 @@ from role_skills import (
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app = Flask(
     __name__,
-    template_folder=os.path.join(BASE_DIR, "template")
+    template_folder=os.path.join(BASE_DIR, "template"),
+    static_folder=os.path.join(BASE_DIR, "static")
 )
 
 
@@ -33,6 +33,15 @@ def home():
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "healthy"})
+
+
+@app.route("/interview.css", methods=["GET"])
+def interview_stylesheet():
+    return send_from_directory(
+        app.template_folder,
+        "interview.css",
+        mimetype="text/css"
+    )
 
 
 @app.route("/generate-questions", methods=["POST"])
@@ -78,18 +87,7 @@ def generate_questions():
 
     try:
         role_profile = get_role_skill_profile(role)
-        is_java_role = (
-            "java" in role.lower()
-            or any("java" in skill.lower() for skill in skills)
-        )
         role_skills = role_profile["role_skills"]
-        if is_java_role:
-            role_skills = list(dict.fromkeys(
-                ["Java", "Object-oriented programming"]
-                + JAVA_TOPICS[:10]
-                + role_skills
-            ))
-
         skill_comparison = compare_skills(role_skills, skills)
         topics = role_skills + skills
         topic_text = ", ".join(topics) if topics else role
@@ -140,8 +138,6 @@ def generate_questions():
             "matched_role_skills": skill_comparison["matched"],
             "missing_role_skills": skill_comparison["missing"],
             "additional_skills": skill_comparison["additional"],
-            "role_skill_source": role_profile["source_url"],
-            "matched_occupation": role_profile["occupation"],
             "experience_level": experience_level,
             "years_experience": years_experience,
             "questions": [item["question"] for item in questions],
