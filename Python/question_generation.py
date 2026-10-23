@@ -30,7 +30,9 @@ def generate_technical_questions(
     skills,
     topic_text,
     experience_level,
-    years_experience
+    years_experience,
+    role_skills,
+    additional_skills
 ):
     questions = []
     seen = set()
@@ -51,8 +53,21 @@ def generate_technical_questions(
         5: "Test advanced architecture, internals, scale, performance, and nuanced trade-offs."
     }
     difficulty_plan = [
-        (level, DIFFICULTY_LEVELS[level], difficulty_guidance[level])
-        for level in technical_levels
+        (
+            level,
+            DIFFICULTY_LEVELS[level],
+            difficulty_guidance[level],
+            (
+                role_skills[index % len(role_skills)]
+                if index < 7 and role_skills
+                else additional_skills[(index - 7) % len(additional_skills)]
+                if index >= 7 and additional_skills
+                else role_skills[index % len(role_skills)]
+                if role_skills
+                else role
+            )
+        )
+        for index, level in enumerate(technical_levels)
     ]
 
     for _ in range(MAX_RETRIES + 1):
@@ -66,17 +81,18 @@ def generate_technical_questions(
                     "difficulty": {
                         "level": level,
                         "name": level_name
-                    }
+                    },
+                    "focus_skill": focus_skill
                 }
-                for question, (level, level_name, _) in zip(
+                for question, (level, level_name, _, focus_skill) in zip(
                     questions,
                     difficulty_plan
                 )
             ]
 
         prompt_plan = "\n".join(
-            f"Question {index}: {level_name} - {guidance}"
-            for index, (_, level_name, guidance) in enumerate(
+            f"Question {index}: {level_name} - Focus on {focus_skill}. {guidance}"
+            for index, (_, level_name, guidance, focus_skill) in enumerate(
                 remaining_plan,
                 start=1
             )
@@ -87,10 +103,13 @@ You are a technical interviewer assessing a candidate for a specific job.
 Job role: {role}
 Candidate experience: {candidate_experience}
 Candidate skills: {", ".join(skills) if skills else role}
+Online role skills: {", ".join(role_skills)}
+Candidate skills that are additional to the role profile: {", ".join(additional_skills) or "None"}
 Relevant topics: {topic_text}
 
 Generate exactly {missing} unique technical interview questions.
-Each question must be directly related to the job role and candidate skills.
+Ask about the job role's online required skills first. After those, ask about candidate skills that are additional to the role profile.
+Follow the focus skill named for each question; do not skip a role skill focus in favor of an additional candidate skill.
 Match the expected depth to the candidate's experience. For a fresher, focus on fundamentals and practical knowledge expected from coursework or personal projects; do not assume professional experience.
 Use this difficulty plan in the exact order shown; do not group or skip levels:
 {prompt_plan}
@@ -122,8 +141,12 @@ Already generated questions; do not repeat or rephrase them:
             len(difficulty_plan) - len(questions)
         )
         for index in range(len(questions), len(difficulty_plan)):
-            level, level_name, _ = difficulty_plan[index]
-            candidates = technical_fallback_questions(role, skills, level)
+            level, level_name, _, focus_skill = difficulty_plan[index]
+            candidates = technical_fallback_questions(
+                role,
+                [focus_skill],
+                level
+            )
             question = next(
                 (
                     candidate for candidate in candidates
@@ -147,9 +170,13 @@ Already generated questions; do not repeat or rephrase them:
             "difficulty": {
                 "level": level,
                 "name": level_name
-            }
+            },
+            "focus_skill": focus_skill
         }
-        for question, (level, level_name, _) in zip(questions, difficulty_plan)
+        for question, (level, level_name, _, focus_skill) in zip(
+            questions,
+            difficulty_plan
+        )
     ]
 
 
@@ -158,19 +185,25 @@ def generate_mixed_questions(
     skills,
     topic_text,
     experience_level,
-    years_experience
+    years_experience,
+    role_skills,
+    additional_skills
 ):
     role_questions = generate_technical_questions(
         role,
         skills,
         topic_text,
         experience_level,
-        years_experience
+        years_experience,
+        role_skills,
+        additional_skills
     )
     if role_questions is None:
         return None
 
-    skill = random.choice(skills) if skills else role
+    skill = role_skills[0] if role_skills else (
+        random.choice(skills) if skills else role
+    )
     _, project_levels = experience_question_plan(
         experience_level,
         years_experience
