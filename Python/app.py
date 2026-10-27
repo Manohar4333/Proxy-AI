@@ -86,8 +86,12 @@ def generate_questions():
     ]
 
     try:
-        role_profile = get_role_skill_profile(role)
+        role_profile = get_role_skill_profile(role, experience_level)
         role_skills = role_profile["role_skills"]
+        if not role_skills:
+            raise RoleSkillLookupError(
+                f"No role skills were found for '{role}'."
+            )
         skill_comparison = compare_skills(role_skills, skills)
         topics = role_skills + skills
         topic_text = ", ".join(topics) if topics else role
@@ -135,9 +139,11 @@ def generate_questions():
         return jsonify({
             "role": role,
             "skills": skills,
+            "skill_profile_basis": role_profile["skill_profile_basis"],
             "matched_role_skills": skill_comparison["matched"],
             "missing_role_skills": skill_comparison["missing"],
             "additional_skills": skill_comparison["additional"],
+            "skill_sources": role_profile["skill_sources"],
             "experience_level": experience_level,
             "years_experience": years_experience,
             "questions": [item["question"] for item in questions],
@@ -148,15 +154,18 @@ def generate_questions():
     except RoleSkillLookupError as error:
         app.logger.exception("Online role skill lookup failed")
         return jsonify({
-            "error": str(error),
+            "error": (
+                "We couldn't prepare a skill profile for this job title. "
+                "Try again or enter a more specific title."
+            ),
             "retry": True
         }), 503
-    except requests.RequestException as error:
+    except requests.RequestException:
         app.logger.exception("Ollama request failed")
         return jsonify({
             "error": (
-                "Could not connect to Ollama. Make sure Ollama is running "
-                f"and model '{MODEL}' is available. Details: {error}"
+                "The local interview model is unavailable. Start Ollama and "
+                f"make sure '{MODEL}' is installed, then try again."
             ),
             "retry": True
         }), 503

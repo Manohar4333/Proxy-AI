@@ -8,7 +8,7 @@
 </head>
 <body data-generate-url="{{ url_for('generate_questions') }}">
     <h1>AI Interviewer</h1>
-    <p>Voice-enabled interview questions based on the job role, its online skill profile, and the candidate's experience.</p>
+    <p>Voice-enabled interview questions based on the job role, its skill profile, and the candidate's experience.</p>
 
     <section>
         <h2>Configure Interview</h2>
@@ -134,6 +134,22 @@
             speakQuestion();
         }
 
+        function clearInterview() {
+            questions = [];
+            questionDetails = [];
+            currentIndex = 0;
+            questionText.textContent = "Generate questions to begin.";
+            questionNumberText.textContent = "Question 0 of 0";
+            questionCategoryText.textContent = "";
+            progressFill.style.width = "0%";
+            answer.value = "";
+            finalTranscript = "";
+            nextBtn.disabled = true;
+            nextBtn.textContent = "Next Question";
+            skillsMatch.hidden = true;
+            skillsMatch.replaceChildren();
+        }
+
         function speakQuestion() {
             if (!questions.length) {
                 statusText.textContent = "Generate questions first.";
@@ -179,7 +195,7 @@
             generateBtn.disabled = true;
             nextBtn.disabled = true;
             statusText.textContent =
-                "Checking the online role skill profile and generating experience-appropriate questions. This may take a few minutes...";
+                "Checking role skills and generating experience-appropriate questions. This may take a few minutes...";
             skillsMatch.hidden = true;
             skillsMatch.replaceChildren();
 
@@ -227,20 +243,47 @@
 
                 questions = data.questions;
                 questionDetails = data.question_details;
-                const profileTitle = document.createElement("p");
-                profileTitle.textContent =
-                    `Role skill comparison for ${data.role || role}.`;
-                skillsMatch.appendChild(profileTitle);
-                [
-                    ["Matched role skills", data.matched_role_skills],
-                    ["Role skills not listed on the resume (still assessed)", data.missing_role_skills],
-                    ["Additional resume skills (asked after role skills)", data.additional_skills]
-                ].forEach(([label, skillList]) => {
-                    const row = document.createElement("p");
-                    row.textContent = `${label}: ${skillList.length ? skillList.join(", ") : "None"}`;
-                    skillsMatch.appendChild(row);
-                });
-                skillsMatch.hidden = false;
+                if (data.skill_profile_basis !== "Job title and candidate skills") {
+                    const profileTitle = document.createElement("p");
+                    profileTitle.textContent =
+                        `${data.experience_level === "fresher" ? "Fresher" : "Experienced"} ` +
+                        `skill profile for ${data.role || role}: ` +
+                        `${data.matched_role_skills.length + data.missing_role_skills.length} skills ` +
+                        `(${data.skill_profile_basis}).`;
+                    skillsMatch.appendChild(profileTitle);
+                    const skillRows = [
+                        ["Matched role skills", data.matched_role_skills],
+                        [
+                            data.experience_level === "fresher"
+                                ? "Core skills not listed on the resume"
+                                : "Role skills not listed on the resume (still assessed)",
+                            data.missing_role_skills
+                        ],
+                        ["Additional resume skills (asked after role skills)", data.additional_skills]
+                    ];
+                    skillRows.forEach(([label, skillList]) => {
+                        const row = document.createElement("p");
+                        row.textContent = skillList.length
+                            ? `${label}: ${skillList.join(", ")}`
+                            : `${label}: None`;
+                        skillsMatch.appendChild(row);
+                    });
+                    if (Array.isArray(data.skill_sources) && data.skill_sources.length) {
+                        const sourceRow = document.createElement("p");
+                        sourceRow.append("Sources: ");
+                        data.skill_sources.forEach((source, index) => {
+                            if (index) sourceRow.append(", ");
+                            const sourceLink = document.createElement("a");
+                            sourceLink.href = source.url;
+                            sourceLink.target = "_blank";
+                            sourceLink.rel = "noopener noreferrer";
+                            sourceLink.textContent = source.name;
+                            sourceRow.appendChild(sourceLink);
+                        });
+                        skillsMatch.appendChild(sourceRow);
+                    }
+                    skillsMatch.hidden = false;
+                }
                 currentIndex = 0;
                 displayQuestion();
                 const experienceDescription = experienceLevel === "fresher"
@@ -249,6 +292,7 @@
                 statusText.textContent =
                     `25 mixed questions for ${data.role || role} (${experienceDescription}) are ready. Only one question is shown at a time.`;
             } catch (error) {
+                clearInterview();
                 statusText.textContent = error instanceof TypeError
                     ? "Could not reach the Flask app. Make sure it is running, then reload this page from http://127.0.0.1:5000."
                     : error.message;

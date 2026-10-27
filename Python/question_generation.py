@@ -64,11 +64,16 @@ def generate_technical_questions(
                 if index >= 7 and additional_skills
                 else role_skills[index % len(role_skills)]
                 if role_skills
-                else role
+                else "the job's core technical responsibilities"
             )
         )
         for index, level in enumerate(technical_levels)
     ]
+    role_skill_guidance = (
+        "No online role skill profile is available. Infer the relevant technical skills from the job title."
+        if not role_skills
+        else "Use the online role skills as the primary technical focus."
+    )
 
     for _ in range(MAX_RETRIES + 1):
         remaining_plan = difficulty_plan[len(questions):]
@@ -103,13 +108,13 @@ You are a technical interviewer assessing a candidate for a specific job.
 Job role: {role}
 Candidate experience: {candidate_experience}
 Candidate skills: {", ".join(skills) if skills else role}
-Online role skills: {", ".join(role_skills)}
+Online role skills: {", ".join(role_skills) or "Unavailable"}
 Candidate skills that are additional to the role profile: {", ".join(additional_skills) or "None"}
 Relevant topics: {topic_text}
 
 Generate exactly {missing} unique technical interview questions.
-Ask about the job role's online required skills first. After those, ask about candidate skills that are additional to the role profile.
-Follow the focus skill named for each question; do not skip a role skill focus in favor of an additional candidate skill.
+{role_skill_guidance} Ask about those role skills first. After those, ask about candidate skills that are additional to the role profile.
+Follow the focus named for each question; do not skip a role focus in favor of an additional candidate skill.
 Match the expected depth to the candidate's experience. For a fresher, focus on fundamentals and practical knowledge expected from coursework or personal projects; do not assume professional experience.
 Use this difficulty plan in the exact order shown; do not group or skip levels:
 {prompt_plan}
